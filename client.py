@@ -12,8 +12,8 @@ thread_flag = True
 def read(sock):
     while True:
         try:
-            data = sock.recv(4096)
-        except OSError as e:
+            data = sock.recv(8192)
+        except OSError:
             break
         try:
             if data.decode('utf-8'):
@@ -41,7 +41,7 @@ def write(sock):
                 continue
             break
         try:
-            message_encoded = (ip + '///' + port + '///' + f'[{alias}]' + data).encode('utf-8')
+            message_encoded = (ip + ':' + port + '///' + f'[{alias}]' + data).encode('utf-8')
         except UnicodeEncodeError:
             print('invalid characters')
         else:

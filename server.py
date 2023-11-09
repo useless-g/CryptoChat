@@ -4,7 +4,7 @@
 import socket
 import selectors
 import sys
-import syslog
+# import syslog
 
 
 connections = dict()  # (ip, port) : client_socket
@@ -26,7 +26,7 @@ def receive(client):
     address = str(client).split("'")[-2], int(str(client).split("'")[-1][2:-2])  # из объекта-сокета вычленяем адрес
 
     try:
-        message = client.recv(4096)  # принять 4 кб с клиента / блокировка и ожидание сообщения
+        message = client.recv(8192)  # принять 8 кб с клиента / ожидание сообщения c блокировкой
     except OSError:
         print(':'.join(map(str, address)), 'disconnected')
         del connections[address]
@@ -36,10 +36,15 @@ def receive(client):
         if message:
             message_decoded = message.decode('utf-8')
             try:  # валидация ip и порта
-                ip, port, data = message_decoded.split('///')
+                ip_port, data = message_decoded.partition('///')
+                ip, port = ip_port
+                del ip_port
+
                 # логирование сообщений в syslog
-                syslog.syslog(syslog.LOG_NOTICE,
-                              f'from: {address[0]}:{address[1]}  to: {ip}:{port}  message: {data}'.strip())
+                # syslog.syslog(syslog.LOG_NOTICE,
+                #               f'from: {address[0]}:{address[1]}  to: {ip}:{port}  message: {data}'.strip())
+                print(f'from: {address[0]}:{address[1]}  to: {ip}:{port}  message: {data}'.strip())
+
                 address = ip, int(port)
                 if (ip.count('.') != 3) or (int(port) < 1):
                     raise ValueError
@@ -65,7 +70,7 @@ def receive(client):
             print(':'.join(map(str, address)), 'disconnected')
             del connections[address]
             selector.unregister(client)
-            client.close()  # отсоединить клиента
+            client.close()
 
 
 def event_loop():
@@ -79,23 +84,20 @@ def event_loop():
 
 
 def main():
-
-    syslog.openlog(sys.argv[0])
+    # syslog.openlog(sys.argv[0])
     print(socket.gethostname(), 'started working...')
     server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_sock.bind(('', 7047))
+    server_sock.bind(('', 7048))
     server_sock.listen(5)
     selector.register(fileobj=server_sock, events=selectors.EVENT_READ, data=connect)
     try:
         event_loop()
-    except KeyboardInterrupt as e:
-
+    except KeyboardInterrupt:
         for item in connections.values():
             selector.unregister(item)
             item.close()
         selector.unregister(server_sock)
         server_sock.close()
-        syslog.closelog()
         print('\nProgram stopped working...')
 
 
