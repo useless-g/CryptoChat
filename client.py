@@ -17,6 +17,7 @@ def read(sock):
             break
         try:
             if data.decode('utf-8'):
+                print()
                 print(data.decode('utf-8'))
             else:
                 break
@@ -26,22 +27,24 @@ def read(sock):
 
 def write(sock):
     global thread_flag
+
     alias = input('input your alias: ')  # Вводим наш псевдоним
+    sock.send(alias.encode('utf-8'))
+
+    print('To send message - input nickname and message text')
     while thread_flag:
-        sleep(0.5)
+        sleep(1)
         try:
-            message = input('input ip, port and message through a "^":  ')
+            addressee = input('Addressee: ')
+            message = input('Message: ')
+            data = f"[{alias}]: {message}"
+
+        # HERE WE nEED TO CIPHER DATA BEFORE SENDING
+
         except ValueError:
             break
         try:
-            ip, port, data = message.split('^')
-        except ValueError:
-            if thread_flag:
-                print('invalid message, wrong amount of separators (must be 2)')
-                continue
-            break
-        try:
-            message_encoded = (ip + ':' + port + '///' + f'[{alias}]' + data).encode('utf-8')
+            message_encoded = f"{addressee}$$${data}".encode('utf-8')
         except UnicodeEncodeError:
             print('invalid characters')
         else:
@@ -54,7 +57,7 @@ def write(sock):
 def main():
     global thread_flag
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server = 'localhost', 7047  # введите адрес и порт своего сервера
+    server = 'localhost', 7777  # введите адрес и порт своего сервера
     try:
         sock.connect(server)
     except ConnectionError:

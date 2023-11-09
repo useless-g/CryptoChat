@@ -2,104 +2,120 @@
 # -*- coding: utf-8 -*-
 
 import socket
-import selectors
 import sys
 # import syslog
+import asyncio
+from collections import deque
+
+connections = dict()  # (ip, port) : client socket
+aliases = dict()  # alias : ip, port
+addresses = dict()
 
 
-connections = dict()  # (ip, port) : client_socket
+async def connect(server_sock):
+    while True:
+        try:
+            client, address = server_sock.accept()
+        except BlockingIOError:
+            await asyncio.sleep(0.5)
+        else:
+            print(':'.join(map(str, address)), 'connected')
+            if address not in connections:
+                client.setblocking(False)
+                connections[address] = client  # добавляем клиента в словарь соединений
 
-selector = selectors.DefaultSelector()
 
+async def receive_and_send():
+    while True:
+        for address in connections:  # check all connections for messages else async sleep
+            try:
+                message = connections[address].recv(8192)  # принять 8 кб с клиента / ожидание сообщения nonblocking
+            except BlockingIOError:
+                await asyncio.sleep(0.001)
+            except OSError:
+                print(':'.join(map(str, address)), 'disconnected')
+                connections[address].close()  # отсоединить клиента
+                alias = addresses[address]
+                del connections[address]
+                del addresses[address]
+                del aliases[alias]
+            else:
+                client = connections[address]
+                break
+        else:
+            await asyncio.sleep(1)
+            continue
 
-def connect(server_sock):
-
-    client, address = server_sock.accept()
-    print(':'.join(map(str, address)), 'connected')
-    selector.register(fileobj=client, events=selectors.EVENT_READ, data=receive)
-    if address not in connections:
-        connections[address] = client  # добавляем клиента в словарь соединений
-
-
-def receive(client):
-
-    address = str(client).split("'")[-2], int(str(client).split("'")[-1][2:-2])  # из объекта-сокета вычленяем адрес
-
-    try:
-        message = client.recv(8192)  # принять 8 кб с клиента / ожидание сообщения c блокировкой
-    except OSError:
-        print(':'.join(map(str, address)), 'disconnected')
-        del connections[address]
-        selector.unregister(client)
-        client.close()  # отсоединить клиента
-    else:
         if message:
             message_decoded = message.decode('utf-8')
+
+            if address not in aliases.values():
+                alias = message_decoded
+                aliases[alias] = address
+                addresses[address] = alias
+                continue
+
             try:  # валидация ip и порта
-                ip_port, data = message_decoded.partition('///')
-                ip, port = ip_port
-                del ip_port
 
                 # логирование сообщений в syslog
                 # syslog.syslog(syslog.LOG_NOTICE,
                 #               f'from: {address[0]}:{address[1]}  to: {ip}:{port}  message: {data}'.strip())
-                print(f'from: {address[0]}:{address[1]}  to: {ip}:{port}  message: {data}'.strip())
 
-                address = ip, int(port)
-                if (ip.count('.') != 3) or (int(port) < 1):
-                    raise ValueError
-                tuple(map(int, ip.split('.')))
-            except ValueError:
+                addressee, _, data = message_decoded.partition('$$$')
+                addressee_socket = connections[aliases[addressee]]
+
+                print(f'from: {addresses[address]} ({address[0]}:{address[1]})")\n'
+                      f'to: {addressee} ({aliases[addressee]})\n'
+                      f'message: {data}\n')
+
+            except (ValueError, KeyError):
                 try:
-                    client.send('invalid address'.encode('utf-8'))
+                    client.send("Message not delivered :'( \nNo such user".encode('utf-8'))
                 except ConnectionError:
                     print(':'.join(map(str, address)), 'disconnected')
-                    del connections[address]
-                    selector.unregister(client)
                     client.close()  # отсоединить клиента
-            else:
+                    alias = addresses[address]
+                    del connections[address]
+                    del addresses[address]
+                    del aliases[alias]
+            else:  # ip address in message is ok
                 if address in connections:
                     try:
-                        connections[address].send(data.encode('utf-8'))
-                        client.send('message delivered :) '.encode('utf-8'))
+                        addressee_socket.send(data.encode('utf-8'))
+                        client.send('Message delivered :) '.encode('utf-8'))
                     except ConnectionError:
-                        client.send("message not delivered :'( ".encode('utf-8'))
+                        client.send("Message not delivered :'( ".encode('utf-8'))
                 else:
-                    client.send("message not delivered :'( \nNo such address".encode('utf-8'))
-        else:
+                    client.send("Message not delivered :'( \nNo such user".encode('utf-8'))
+
+        else:  # empty message
             print(':'.join(map(str, address)), 'disconnected')
-            del connections[address]
-            selector.unregister(client)
             client.close()
+            del connections[address]
 
 
-def event_loop():
-    while True:
-
-        events = selector.select()
-
-        for key, event in events:
-            callback = key.data
-            callback(key.fileobj)
-
-
-def main():
-    # syslog.openlog(sys.argv[0])
-    print(socket.gethostname(), 'started working...')
+async def main():
     server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_sock.bind(('', 7048))
-    server_sock.listen(5)
-    selector.register(fileobj=server_sock, events=selectors.EVENT_READ, data=connect)
+    server_sock.setblocking(False)
+    server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server_sock.bind(('', 7777))
+    server_sock.listen()
+    tasks = deque()
+
+    tasks.append(asyncio.create_task(connect(server_sock)))
+    tasks.append(asyncio.create_task(receive_and_send()))
+
     try:
-        event_loop()
+        await asyncio.gather(*tasks)
     except KeyboardInterrupt:
+        pass
+    finally:
         for item in connections.values():
-            selector.unregister(item)
             item.close()
-        selector.unregister(server_sock)
         server_sock.close()
-        print('\nProgram stopped working...')
 
 
 if __name__ == '__main__':
-    main()
+    print(socket.gethostname(), 'started working...')
+    asyncio.run(main())
+    print(socket.gethostname(), 'stopped working...')
