@@ -14,6 +14,7 @@ thread_flag = True
 nicks_private_keys = {}
 DH_public_key = [0, 0]  # g, p
 DH_private_key = [0, 0]  # a, g^a (mod p)
+cipher = RC6.RC6()
 
 
 def read(sock):
@@ -32,6 +33,9 @@ def read(sock):
                     print(nicks_private_keys)
                 else:
                     print()
+                    # TODO: HERE WE NEED TO DECIPHER DATA BEFORE PRINTING
+                    symmetric_key = nicks_private_keys[alias]
+                    data = cipher.encrypt(data.encode(), symmetric_key.encode)
                     print(data)
             else:
                 break
@@ -58,8 +62,8 @@ def write(sock):
                     data = f"[{my_alias}]: {message}"
                     # TODO: HERE WE NEED TO CIPHER DATA BEFORE SENDING
                     symmetric_key = nicks_private_keys[addressee]
-                    RC6.encrypt(data, symmetric_key)
-
+                    data = cipher.encrypt(data.encode(), symmetric_key.encode)
+                    # не надо шифровать алиас, так не получитс у получателя понять какой нужен ключ
                     message_encoded = f"{addressee}$$${data}".encode()
 
                 else:
