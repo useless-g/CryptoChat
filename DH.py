@@ -1,5 +1,6 @@
 import random
-from math import gcd
+from math import gcd, sqrt, ceil
+from time import time
 from typing import Tuple
 
 from rsa.fast_pow_mod import fast_pow_mod
@@ -14,14 +15,19 @@ def gen_g_p() -> Tuple[int, int]:
                 break
 
         phi = (p - 1)
-        print(p)
+        print(p)  # modulo for DH
+
+        # ищем первообразный корень
         for g in range(2, p):
             if gcd(g, p) != 1:
                 continue
             print(g)
 
-            for i in range(1, phi):
-                if fast_pow_mod(g, i, p) == 1:  # bad, not root
+            for i in range(2, ceil(sqrt(phi))):
+            # for i in range(1, phi // 2):
+                if phi % i:
+                    continue
+                if fast_pow_mod(g, phi // i, p) == 1:  # bad, not root
                     break
 
             else:
@@ -45,7 +51,7 @@ def n_bit_random(key_len_bits):
 def get_low_level_prime():
     first_primes_list = first_100_primes_list
     while True:
-        prime_candidate = n_bit_random(40)
+        prime_candidate = n_bit_random(103)
 
         for divisor in first_primes_list:
             if (prime_candidate % divisor == 0) and (divisor ** 2 <= prime_candidate):
@@ -81,5 +87,6 @@ def is_Miller_Rabin_test_passed(miller_rabin_candidate):
     return True
 
 
-
-# print(gen_g_p())
+t = time()
+print(gen_g_p())
+print(time() - t)
