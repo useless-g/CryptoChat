@@ -4,7 +4,7 @@ from time import time
 from typing import Tuple
 
 from rsa.fast_pow_mod import fast_pow_mod
-from rsa.sieve import first_100_primes_list
+from rsa.sieve import first_100_primes_list, first_20_000_000_primes_list
 
 
 def gen_g_p() -> Tuple[int, int]:
@@ -13,7 +13,7 @@ def gen_g_p() -> Tuple[int, int]:
             p = get_low_level_prime()
             if is_Miller_Rabin_test_passed(p):
                 break
-
+        print(len(bin(p)) - 2)
         phi = (p - 1)
         print(p)  # modulo for DH
 
@@ -23,16 +23,21 @@ def gen_g_p() -> Tuple[int, int]:
                 continue
             print(g)
 
-            for i in range(2, ceil(sqrt(phi))):
-            # for i in range(1, phi // 2):
+            for i in first_20_000_000_primes_list:
                 if phi % i:
                     continue
-                if fast_pow_mod(g, phi // i, p) == 1:  # bad, not root
+                if pow(g, phi // i, p) == 1:  # bad, not root
                     break
-
             else:
-                if fast_pow_mod(g, phi, p) == 1:  # good, g is root
-                    break
+                for i in range(373587911, ceil(sqrt(phi))):
+                    if phi % i:
+                        continue
+                    if pow(g, phi // i, p) == 1:  # bad, not root
+                        break
+
+                else:
+                    if pow(g, phi, p) == 1:  # good, g is root
+                        break
         else:
             continue
         break
@@ -44,14 +49,14 @@ def n_bit_random(key_len_bits):
     Returns a random number
     between 2**(n-1)+1 and 2**n-1
     """
-    n = key_len_bits // 2
+    n = key_len_bits
     return random.randrange(2 ** (n - 1) + 1, 2 ** n - 1)
 
 
 def get_low_level_prime():
     first_primes_list = first_100_primes_list
     while True:
-        prime_candidate = n_bit_random(103)
+        prime_candidate = n_bit_random(70)
 
         for divisor in first_primes_list:
             if (prime_candidate % divisor == 0) and (divisor ** 2 <= prime_candidate):

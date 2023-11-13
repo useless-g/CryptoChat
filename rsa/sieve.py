@@ -13,9 +13,17 @@ def gen_primes():
         q += 1
 
 
-# primes_generator = gen_primes()
-# first_100_primes_list = [next(primes_generator) for _ in range(100)]
-# print(first_100_primes_list)
+primes_generator = gen_primes()
+# with open("primes", "w") as f:
+#     for _ in range(20_000_000):
+#         if _ % 10000 == 0:
+#             print(_)
+#         f.write(f"{next(primes_generator)}\n")
+# print(next(primes_generator))
+
+with open("./rsa/primes", "r") as f:
+    first_20_000_000_primes_list = tuple(map(int, f.read().strip().split("\n")))
+
 first_100_primes_list = (2, 3, 5, 7, 11, 13, 17, 19, 23, 29,
                          31, 37, 41, 43, 47, 53, 59, 61, 67, 71,
                          73, 79, 83, 89, 97, 101, 103, 107, 109, 113,
