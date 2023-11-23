@@ -4,7 +4,7 @@ from time import time
 from typing import Tuple
 
 from rsa.fast_pow_mod import fast_pow_mod
-from rsa.sieve import first_100_primes_list, first_20_000_000_primes_list
+from rsa.sieve import first_100_primes_list
 
 
 def gen_g_p() -> Tuple[int, int]:
@@ -56,7 +56,7 @@ def n_bit_random(key_len_bits):
 def get_low_level_prime():
     first_primes_list = first_100_primes_list
     while True:
-        prime_candidate = n_bit_random(70)
+        prime_candidate = n_bit_random(128)
 
         for divisor in first_primes_list:
             if (prime_candidate % divisor == 0) and (divisor ** 2 <= prime_candidate):
