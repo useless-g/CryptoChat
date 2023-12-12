@@ -1,7 +1,14 @@
 import random
 from math import ceil, sqrt
 from time import time
+from pyecf import LenstraAlgorithm
 
+n = 155188576501293167865524267
+algo = LenstraAlgorithm(n)
+t = time()
+factors = algo.factorize()  # отсортированный список делителей
+print(factors)
+print(time() - t)
 from rsa.sieve import first_100_primes_list, first_20_000_000_primes_list
 
 

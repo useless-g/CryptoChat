@@ -1,108 +1,138 @@
-import json as js
-from math import e, sqrt, ceil
-
-def ROTL(x, y, w):
-    return (x << (y & (w - 1))) | (x >> (w - (y & (w - 1))))
-
-def ROTR(x, y, w):
-    return (x >> (y & (w - 1))) | (x << (w - (y & (w - 1))))  # try % w instead of & w-1
+import math
+import os
 
 
-class RC5:
+class RC6:
+    def __init__(self, w=32, r=20, key_len=16):
+        self.w = w  # word len (4 words - 1 block)
+        self.r = r  # number of rounds
+        self.b = key_len  # secret key len
+        self.module = 2 ** self.w
 
-    def __init__(self):
-        with open("./params.cfg", "r") as f:
-            params = js.load(f)
-        self.w = int(params["w"])
-        self.r = int(params["r"])
-        self.key = int(params["key"])
-        key = []
-        while self.key:
-            key.append(self.key % 256)
-            self.key //= 256
-        self.key = key[::-1]
-        self.modulo = 2 ** self.w
-        self.S = []
-        self.fill_S()
+    def cycle_permutation(self, number, number_of_shift):
+        """L - number, k - number of shift (positive - left, negative - right)"""
+        if abs(number_of_shift) > self.w:
+            number_of_shift %= self.w
+        if number_of_shift > 0:
+            number_to_shift = number // (2 ** (self.w - number_of_shift))
+            result = number % (2 ** (self.w - number_of_shift))
+            result = result << number_of_shift
+            result += number_to_shift
+            return result
+        else:
+            number_of_shift_abs = abs(number_of_shift)
+            number_to_shift = number % (2 ** number_of_shift_abs)
+            result = number >> number_of_shift_abs
+            result += number_to_shift << (self.w - number_of_shift_abs)
+            return result
 
-    def fill_S(self):
-        Odd = lambda x: int(x) if int(x) % 2 else int(x) + 1
-        golden_ratio = (1 + sqrt(5)) / 2
-        P = Odd((e - 2) * self.modulo)  # correct
-        Q = Odd((golden_ratio - 1) * self.modulo)  # correct
-        b = len(self.key)  # correct
-        u = ceil(self.w / 8)  # correct
-        c = ceil(b / u)  # correct
-        t = 2 * (self.r + 1)  # correct
-        if b == c == 0:
+    def key_schedule(self, private_key):
+        p_w = math.floor((math.e - 2) * (2 ** self.w))  # const e
+        q_w = math.floor((math.sqrt(1.25) - 0.5) * (2 ** self.w))  # const golden ratio
+        if p_w % 2 == 0:  # rounding to the closest odd number
+            p_w += 1
+        if q_w % 2 == 0:  # rounding to the closest odd number
+            q_w += 1
+        u = self.w // 8
+        if self.b == 0:
             c = 1
+        else:
+            c = int(self.b / u)
         L = [0 for _ in range(c)]
-
-        for i in range(b - 1, -1, -1):
-            L[int(i / u)] = self.add_modulo(L[int(i / u)] << 8, self.key[i])
-
-        self.S = [0 for _ in range(t)]
-        self.S[0] = P
-        for i in range(1, t):
-            self.S[i] = (self.S[i - 1] + Q) % self.modulo
-
+        for i in range(self.b - 1, -1, -1):
+            L[i // u] = sum([self.cycle_permutation(L[i // u], 8), private_key[i]]) % self.module
+        # print('L:',' '.join(bin(i) for i in L),L[0].bit_length())
+        # print('key:',' '.join(bin(i) for i in key))
+        S = [p_w]
+        for i in range(1, 2 * self.r + 4):
+            S.append(sum([S[i - 1], q_w]) % self.module)
         A = B = i = j = 0
+        v = 3 * max(c, 2 * self.r + 4)
+        # permutation
+        for k in range(v):
+            A = S[i] = self.cycle_permutation(sum([S[i], A, B]) % self.module, 3)
+            B = L[j] = self.cycle_permutation(sum([L[j], A, B]) % self.module, sum([A, B]) % self.module)
+            i = int((i + 1) % (2 * self.r + 4))
+            j = int((j + 1) % c)
+        return S
 
-        for _ in range(3 * max(t, c)):
-            A = self.S[i] = ROTL(self.add_modulo(self.S[i], (A + B) % self.modulo), 3, self.w) % self.modulo
-            B = L[j] = ROTR(self.add_modulo(L[j], self.add_modulo(A, B)), self.add_modulo(A, B), self.w) % self.modulo
+    def store_text(self, arr: list):
+        result = 0
+        shift = 8
+        for i in arr:
+            result = (result << shift) + i
+        if (len(arr) < self.w // 8) and not(result == 0):
+            result = (result << (self.w // 8 - len(arr)) * shift)
+        return result
 
-            i = (i + 1) % t
-            j = (j + 1) % c
+    def parse_text(self, block_part):
+        result = []
+        shift = 256
+        for i in range(self.w // 8):
+            result.insert(0, block_part % shift)
+            block_part = block_part // shift
+        return result
 
-    def add_modulo(self, a, b):
-        return (a + b) % self.modulo
 
-    def sub_modulo(self, a, b):
-        return (a - b) % self.modulo
 
-    def encrypt(self, text):
-        A, B = self.text_to_AB(text)  # A: 1919252337    B:  1919252337
-        A = self.add_modulo(A, self.S[0])
-        B = self.add_modulo(B, self.S[1])
-        for i in range(1, self.r + 1):
-            A = (ROTL(A ^ B, B, self.w) + self.S[2 * i]) % self.modulo
-            B = (ROTR(B ^ A, A, self.w) + self.S[2 * i + 1]) % self.modulo
-        return self.AB_to_text(A, B)
+    def encrypt(self, plaintext, private_key):
+        S = self.key_schedule(private_key)
+        ciphertext = bytearray()
+        block_part_size = self.w // 8
+        for j in range(0, len(plaintext), block_part_size*4):
+            A = self.store_text(plaintext[j: j + block_part_size])
+            B = self.store_text(plaintext[j + block_part_size: j + 2 * block_part_size])
+            C = self.store_text(plaintext[j + 2 * block_part_size: j + 3 * block_part_size])
+            D = self.store_text(plaintext[j + 3 * block_part_size: j + 4 * block_part_size])
+            B = sum([S[0], B]) % self.module
+            D = sum([S[1], D]) % self.module
+            for i in range(1, self.r + 1):
+                t = self.cycle_permutation((B * (2 * B + 1)) % self.module, int(math.log2(self.w)))
+                u = self.cycle_permutation((D * (2 * D + 1)) % self.module, int(math.log2(self.w)))
+                A = sum([self.cycle_permutation(A ^ t, u), S[2 * i]]) % self.module
+                C = sum([self.cycle_permutation(C ^ u, t), S[2 * i + 1]]) % self.module
+                A, B, C, D = B, C, D, A
+            A = sum([A, S[2 * self.r + 2]]) % self.module
+            C = sum([C, S[2 * self.r + 3]]) % self.module
+            for k in [A, B, C, D]:
+                text_arr = self.parse_text(k)
+                for i in text_arr:
+                    ciphertext.append(i)
+        return ciphertext
 
-    def decrypt(self, text):
-        A, B = self.text_to_AB(text)  # A:476140826    B: 3922915879
-        for i in range(self.r, 0, -1):
-            B = (ROTR(self.sub_modulo(B, self.S[2 * i + 1]), A, self.w) % self.modulo) ^ A
-            A = (ROTR(self.sub_modulo(A, self.S[2 * i]), B, self.w) % self.modulo) ^ B
-        B = self.sub_modulo(B, self.S[1])
-        A = self.sub_modulo(A, self.S[0])
-        return self.AB_to_text(A, B)
-
-    def text_to_AB(self, text):
-        A = sum([ord(text[i]) << (8 * i) for i in range(ceil(self.w / 8) - 1, -1, -1)])
-        B = sum([ord(text[i]) << (8 * (i - ceil(self.w / 8))) for i in
-                 range(ceil(self.w / 8) * 2 - 1, ceil(self.w / 8) - 1, -1)])
-        return A, B
-
-    def AB_to_text(self, A, B):  #
-        res = ''
-        while A:
-            res += chr(A % 256)
-            A //= 256
-        while B:
-            res += chr(B % 256)
-            B //= 256
-        return res
+    def decrypt(self, ciphertext, private_key):
+        S = self.key_schedule(private_key)
+        decrypted_arr = bytearray()
+        block_part_size = self.w // 8
+        for j in range(0, len(ciphertext), 4 * block_part_size):
+            A = self.store_text(ciphertext[j: j + block_part_size])
+            B = self.store_text(ciphertext[j + block_part_size: j + 2 * block_part_size])
+            C = self.store_text(ciphertext[j + 2 * block_part_size: j + 3 * block_part_size])
+            D = self.store_text(ciphertext[j + 3 * block_part_size: j + 4 * block_part_size])
+            C = (C - S[2 * self.r + 3] + self.module) % self.module
+            A = (A - S[2 * self.r + 2] + self.module) % self.module
+            for i in range(self.r, 0, -1):
+                A, B, C, D = D, A, B, C
+                u = self.cycle_permutation((D * (2 * D + 1)) % self.module, int(math.log2(self.w)))
+                t = self.cycle_permutation((B * (2 * B + 1)) % self.module, int(math.log2(self.w)))
+                C = self.cycle_permutation((C - S[2 * i + 1] + self.module) % self.module, -t) ^ u
+                A = self.cycle_permutation((A - S[2 * i] + self.module) % self.module, -u) ^ t
+            D = (D - S[1] + self.module) % self.module
+            B = (B - S[0] + self.module) % self.module
+            for k in [A, B, C, D]:
+                text_arr = self.parse_text(k)
+                for i in text_arr:
+                    decrypted_arr.append(i)
+        return decrypted_arr
 
 
 if __name__ == "__main__":
-    rc = RC5()
-    text = 'qwerqwer'
-    # AB = rc.text_to_AB(text)
-    # print(AB)
-    # print(rc.AB_to_text(AB[0], AB[1]))
-    encrypted = rc.encrypt(text)  # ''
-    print(encrypted)
-    decrypted = rc.decrypt(encrypted)
-    print(decrypted)
+    s_encrypt = RC6()
+    text = "sex"
+    key = os.urandom(16)
+    cypher_text = s_encrypt.encrypt(text.encode(), key)
+    print(cypher_text.hex().upper())
+    decrypted_text = s_encrypt.decrypt(cypher_text, key)
+    print(decrypted_text.hex().upper())
+    print(decrypted_text)
+

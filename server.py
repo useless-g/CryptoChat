@@ -7,7 +7,7 @@ import asyncio
 from collections import deque
 from time import time
 
-from DH import gen_g_p
+from DH.DH import gen_g_p
 
 connections = {}  # (ip, port) : client socket
 aliases = {}  # alias : ip, port
@@ -30,7 +30,7 @@ async def connect(server_sock):
             if address not in connections:
                 client_socket.setblocking(False)
                 connections[address] = client_socket  # добавляем клиента в словарь соединений
-                client_socket.send(f"{g}@@@{p}".encode("utf-8"))  # send public DH keys
+                client_socket.send(f"{g}@@@{p}".encode())  # send public DH keys
 
 
 async def receive_and_send():
@@ -56,11 +56,22 @@ async def receive_and_send():
             continue
 
         if message:
-            message_decoded = message.decode('utf-8')
+            message_decoded = ""
+            try:
+                message_decoded = message.decode()
+            except UnicodeDecodeError:
+                for i in range(3, len(message)):
+                    try:
+                        # print(message[:i].decode()[-3:])
+                        if message[:i].decode()[-3:] == "$$$":
+                            addressee, data = message[:i].decode()[:-3], message[i:]
+                            break
+                    except UnicodeDecodeError as e:
+                        raise e
 
             if address not in aliases.values():  # registration
                 alias, _, private_key_part = message_decoded.partition("@@@")
-                print(message_decoded)
+                print(f"{alias} public DH key is {private_key_part}")
                 aliases[alias] = address
                 addresses[address] = alias
                 keys_by_alias[alias] = int(private_key_part)
@@ -70,7 +81,7 @@ async def receive_and_send():
                     client_socket.send(f"{message_decoded}###{keys_by_alias[message_decoded]}".encode())
                     connections[aliases[message_decoded]].send(f"{addresses[address]}###{keys_by_alias[addresses[address]]}".encode())
                 except (ValueError, KeyError):
-                    client_socket.send("Message not delivered :'( \nNo such user".encode('utf-8'))
+                    client_socket.send("Message not delivered :'( \nNo such user".encode())
                 except (ConnectionError, OSError):
                     print(':'.join(map(str, address)), 'disconnected')
                     connections[address].close()  # отсоединить клиента
@@ -82,16 +93,16 @@ async def receive_and_send():
                 continue
 
             try:  # валидация ip и порта
-                addressee, _, data = message_decoded.partition('$$$')
+                # addressee, _, data = message_decoded.partition('$$$')
                 addressee_socket = connections[aliases[addressee]]
 
-                print(f'from: {addresses[address]} ({address[0]}:{address[1]})")\n'
-                      f'to: {addressee} ({aliases[addressee]})\n'
+                print(f'from: {addresses[address]} ({address[0]}:{address[1]})\n'
+                      f'to: {addressee} ({":".join(map(str, list(aliases[addressee])))})\n'
                       f'message: {data}\n')
 
             except (ValueError, KeyError):
                 try:
-                    client_socket.send("Message not delivered :'( \nNo such user".encode('utf-8'))
+                    client_socket.send("Message not delivered :'( \nNo such user".encode())
                 except ConnectionError:
                     print(':'.join(map(str, address)), 'disconnected')
                     client_socket.close()  # отсоединить клиента
@@ -103,12 +114,12 @@ async def receive_and_send():
             else:  # ip address in message is ok
                 if address in connections:
                     try:
-                        addressee_socket.send(data.encode('utf-8'))
-                        client_socket.send('Message delivered :) '.encode('utf-8'))
+                        addressee_socket.send(data)
+                        client_socket.send('Message delivered :) '.encode())
                     except ConnectionError:
-                        client_socket.send("Message not delivered :'( ".encode('utf-8'))
+                        client_socket.send("Message not delivered :'( ".encode())
                 else:
-                    client_socket.send("Message not delivered :'( \nNo such user".encode('utf-8'))
+                    client_socket.send("Message not delivered :'( \nNo such user".encode())
 
         else:  # empty message
             print(':'.join(map(str, address)), 'disconnected')

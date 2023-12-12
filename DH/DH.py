@@ -1,10 +1,10 @@
 import random
-from math import gcd, sqrt, ceil
-from time import time
+from math import gcd
 from typing import Tuple
 
 from rsa.fast_pow_mod import fast_pow_mod
 from rsa.sieve import first_100_primes_list
+from DH.factorization import factorise
 
 
 def gen_g_p() -> Tuple[int, int]:
@@ -21,23 +21,15 @@ def gen_g_p() -> Tuple[int, int]:
         for g in range(2, p):
             if gcd(g, p) != 1:
                 continue
-            print(g)
+            print(g)  # square candidate
 
-            for i in first_20_000_000_primes_list:
-                if phi % i:
-                    continue
-                if pow(g, phi // i, p) == 1:  # bad, not root
+            for degree in set(factorise(phi)):
+                if fast_pow_mod(g, phi // degree, p) == 1:  # bad, not root
                     break
-            else:
-                for i in range(373587911, ceil(sqrt(phi))):
-                    if phi % i:
-                        continue
-                    if pow(g, phi // i, p) == 1:  # bad, not root
-                        break
 
-                else:
-                    if pow(g, phi, p) == 1:  # good, g is root
-                        break
+            else:
+                if fast_pow_mod(g, phi, p) == 1:  # good, g is root
+                    break
         else:
             continue
         break
@@ -84,7 +76,7 @@ def is_Miller_Rabin_test_passed(miller_rabin_candidate):
         return True
 
     # Set number of trials here
-    number_of_Rabin_trials = 20
+    number_of_Rabin_trials = 30
     for i in range(number_of_Rabin_trials):
         round_tester = random.randrange(2, miller_rabin_candidate)
         if trial_composite(round_tester):
@@ -92,6 +84,8 @@ def is_Miller_Rabin_test_passed(miller_rabin_candidate):
     return True
 
 
-t = time()
-print(gen_g_p())
-print(time() - t)
+if __name__ == "__main__":
+    from time import time
+    t = time()
+    print(gen_g_p())
+    print(time() - t)
