@@ -38,6 +38,7 @@ def read(sock):
                 else:
                     # print(39)
                     # TODO: WTF this state is?
+                    pass
                     # symmetric_key = nicks_private_keys[alias]
                     # data = cipher.decrypt(data, symmetric_key)
                     # print(data)
