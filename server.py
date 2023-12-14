@@ -12,6 +12,7 @@ from DH.DH import gen_g_p
 connections = {}  # (ip, port) : client socket
 aliases = {}  # alias : ip, port
 keys_by_alias = {}  # part of key for every alias
+rsa_keys_by_alias = {}  # public part of rsa key for every alias
 addresses = {}
 t = time()
 g, p = gen_g_p()  # DH public keys
@@ -48,6 +49,7 @@ async def receive_and_send():
                 del addresses[address]
                 del aliases[alias]
                 del keys_by_alias[alias]
+                del rsa_keys_by_alias[alias]
             else:
                 client_socket = connections[address]
                 break
@@ -70,16 +72,19 @@ async def receive_and_send():
                         raise e
 
             if address not in aliases.values():  # registration
-                alias, _, private_key_part = message_decoded.partition("@@@")
+                print(message_decoded.split("@@@"))
+                alias, private_key_part, rsa_public_key0, rsa_public_key1 = message_decoded.split("@@@")
                 print(f"{alias} public DH key is {private_key_part}")
+                print(f"{alias} public RSA key is {rsa_public_key0, rsa_public_key1}")
                 aliases[alias] = address
                 addresses[address] = alias
                 keys_by_alias[alias] = int(private_key_part)
+                rsa_keys_by_alias[alias] = rsa_public_key0, rsa_public_key1
                 continue
             if message_decoded in aliases:  # key exchange
                 try:
-                    client_socket.send(f"{message_decoded}###{keys_by_alias[message_decoded]}".encode())
-                    connections[aliases[message_decoded]].send(f"{addresses[address]}###{keys_by_alias[addresses[address]]}".encode())
+                    client_socket.send(f"{message_decoded}###{keys_by_alias[message_decoded]}###{rsa_keys_by_alias[message_decoded][0]}###{rsa_keys_by_alias[message_decoded][1]}".encode())
+                    connections[aliases[message_decoded]].send(f"{addresses[address]}###{keys_by_alias[addresses[address]]}###{rsa_keys_by_alias[addresses[address]][0]}###{rsa_keys_by_alias[addresses[address]][1]}".encode())
                 except (ValueError, KeyError):
                     client_socket.send("Message not delivered :'( \nNo such user".encode())
                 except (ConnectionError, OSError):
@@ -90,9 +95,10 @@ async def receive_and_send():
                     del addresses[address]
                     del aliases[alias]
                     del keys_by_alias[alias]
+                    del rsa_keys_by_alias[alias]
                 continue
 
-            try:  # валидация ip и порта
+            try:  # валидация получателя
                 # addressee, _, data = message_decoded.partition('$$$')
                 addressee_socket = connections[aliases[addressee]]
 
@@ -111,7 +117,8 @@ async def receive_and_send():
                     del addresses[address]
                     del aliases[alias]
                     del keys_by_alias[alias]
-            else:  # ip address in message is ok
+                    del rsa_keys_by_alias[alias]
+            else:  # получатель in message is ok
                 if address in connections:
                     try:
                         addressee_socket.send(data)

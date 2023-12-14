@@ -9,12 +9,18 @@ from time import sleep
 from DH.DH import n_bit_random
 from rsa.fast_pow_mod import fast_pow_mod
 from RC6 import RC6
+from sha256.SHA import SHA
+from rsa.cipher import RSA
 
 thread_flag = True
 nicks_private_keys = {}  # {bob: g^ab (mod p), alice: g^ac (mod p) ... }
 DH_public_key = [0, 0]  # g, p
 DH_private_key = [0, 0]  # a, g^a (mod p)
 cipher = RC6.RC6()
+hash_ = SHA()
+RSA_cipher = RSA(cipher_key="private")
+rsa_public_key, rsa_private_key = RSA_cipher.public_key, RSA_cipher.private_key
+rsa_deciphers = {}
 
 
 def read(sock):
@@ -29,33 +35,46 @@ def read(sock):
             print(data)
             if data:
                 if "###" in data:
-                    alias, _, alias_private_DH_key = data.partition("###")  # nick, g^b (mod p)
+                    alias, alias_private_DH_key, alias_rsa_public_key0, alias_rsa_public_key1 = data.split("###")  # nick, g^b (mod p), rsa pub
                     nicks_private_keys[alias] = fast_pow_mod(int(alias_private_DH_key),
                                                              DH_private_key[0],
                                                              DH_public_key[1])
                     nicks_private_keys[alias] = nicks_private_keys[alias].to_bytes(length=16, byteorder="big")
+                    rsa_deciphers[alias] = RSA(cipher_key="private", key=(int(alias_rsa_public_key0),
+                                                                          int(alias_rsa_public_key1)))
                     print(nicks_private_keys)
                 else:
+                    pass
                     # print(39)
                     # TODO: WTF this state is?
-                    pass
                     # symmetric_key = nicks_private_keys[alias]
                     # data = cipher.decrypt(data, symmetric_key)
                     # print(data)
             else:
                 break
         except UnicodeDecodeError:
+
             # TODO: HERE WE NEED TO DECIPHER DATA BEFORE PRINTING
             symmetric_key = nicks_private_keys[alias]
             data = cipher.decrypt(data, symmetric_key)
-            print(data.decode())
+            for i in range(1, 257):
+                if data[-i] != 0:
+                    i -= 1
+                    break
+
+            fingerprint = rsa_deciphers[alias].decipher(bytes(data[-256-i:-i]))
+            if hash_.hash(data[:-256-i]).to_bytes(length=32, byteorder="big") == fingerprint:
+                print(bytes(data[:-256-i]).decode())
+            else:
+                print(hash_.hash(bytearray(data)))
+                print(fingerprint)
 
 
 def write(sock):
     global thread_flag
 
     my_alias = input('input your alias: ')  # Вводим наш псевдоним
-    sock.send(f"{my_alias}@@@{DH_private_key[1]}".encode())
+    sock.send(f"{my_alias}@@@{DH_private_key[1]}@@@{rsa_public_key[0]}@@@{rsa_public_key[1]}".encode())
 
     print("To send message with old companion - input nickname and message text.")
     print("To make key exchange with new companion - input his nickname and empty message.")
@@ -69,9 +88,17 @@ def write(sock):
                 if nicks_private_keys.get(addressee):
                     data = f"[{my_alias}]: {message}"
 
+                    b = bytearray(data.encode())
+                    b = hash_.hash(b).to_bytes(length=32, byteorder="big")
+                    print("hash =", b)
+                    b = RSA_cipher.cipher(b)
+                    # print(len(b))
+                    print("rsa ciphered hash =", b)
+
                     # TODO: HERE WE NEED TO CIPHER DATA BEFORE SENDING
                     symmetric_key = nicks_private_keys[addressee]
-                    data = cipher.encrypt(data.encode(), symmetric_key)
+                    data = cipher.encrypt(data.encode() + b, symmetric_key)
+                    print("data before sending =", data)
 
                     # TODO: не надо шифровать алиас, так не получится у получателя понять какой нужен ключ
                     message_encoded = f"{addressee}$$$".encode() + data

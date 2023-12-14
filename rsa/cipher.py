@@ -1,11 +1,13 @@
 import random
+
 from time import time
 from typing import Union, Tuple, Literal
-from sieve import first_100_primes_list
 from math import gcd
-from fast_pow_mod import fast_pow_mod
-from euclid_extended import find_inverse
 from functools import wraps
+
+from .sieve import first_100_primes_list
+from .fast_pow_mod import fast_pow_mod
+from .euclid_extended import find_inverse
 
 
 def discard_padding(decipher_func):
@@ -41,16 +43,21 @@ class RSA:
         # self.key_len_bits = (len(bin(key[0][0])) - 2) if key else 2048
         self.key_len_bits = 2048
         # assert self.key_len_bits in (2048, 4096)
-        self.private_key, self.public_key = key or self.generate_keys()
+        if key and cipher_key == "public":
+            self.private_key = key
+        elif key and cipher_key == "private":
+            self.public_key = key
+        else:
+            self.private_key, self.public_key = key or self.generate_keys()
         self.cipher_key = cipher_key
 
-        check = 0x6f77202c6f6c6c654821646c726f77202c6f6c6c6548216246c726f77202c6f6c6c654821646c726f77202c6f6c6c654821646
-        assert check == fast_pow_mod(fast_pow_mod(check, self.private_key[0], self.private_key[1]),  # check keys
-                                     self.public_key[0],
-                                     self.public_key[1])
-        assert check == fast_pow_mod(fast_pow_mod(check, self.public_key[0], self.public_key[1]),  # check keys
-                                     self.private_key[0],
-                                     self.private_key[1])
+        # check = 0x6f77202c6f6c6c654821646c726f77202c6f6c6c6548216246c726f77202c6f6c6c654821646c726f77202c6f6c6c654821646
+        # assert check == fast_pow_mod(fast_pow_mod(check, self.private_key[0], self.private_key[1]),  # check keys
+        #                              self.public_key[0],
+        #                              self.public_key[1])
+        # assert check == fast_pow_mod(fast_pow_mod(check, self.public_key[0], self.public_key[1]),  # check keys
+        #                              self.private_key[0],
+        #                              self.private_key[1])
 
     def generate_keys(self) -> Union[None, Tuple[Tuple[int, int], Tuple[int, int]]]:
         while True:
